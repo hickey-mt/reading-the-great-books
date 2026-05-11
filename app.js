@@ -473,9 +473,12 @@ function openAddModal() {
     <div id="ol-results" class="ol-results"></div>
     <p style="margin-top:20px;padding-top:16px;border-top:1px solid var(--rule);text-align:center;font-size:13px;color:var(--ink-muted);">
       Can’t find it? <button type="button" id="go-manual" class="btn-linklike">Enter it manually →</button>
+      &nbsp;·&nbsp;
+      <button type="button" id="go-import" class="btn-linklike">Import from Goodreads →</button>
     </p>`;
   panel.querySelectorAll('[data-close]').forEach((el) => el.addEventListener('click', () => hideModal('#add-modal')));
   $('#go-manual').addEventListener('click', showManualForm);
+  $('#go-import').addEventListener('click', showImportFlow);
   setupAddFlow();
   showModal('#add-modal');
 }
@@ -664,6 +667,218 @@ function showNewBookForm(prefilled) {
       e.hidden = false;
     }
   });
+}
+
+/* ===================== Goodreads CSV import ===================== */
+
+function parseCSV(text) {
+  const rows = [];
+  let i = 0, field = '', row = [], inQuotes = false;
+  while (i < text.length) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i += 2; continue; }
+        inQuotes = false; i++; continue;
+      }
+      field += c; i++; continue;
+    }
+    if (c === '"') { inQuotes = true; i++; continue; }
+    if (c === ',') { row.push(field); field = ''; i++; continue; }
+    if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i + 1] === '\n') i++;
+      row.push(field); field = '';
+      if (row.length > 1 || row[0] !== '') rows.push(row);
+      row = [];
+      i++; continue;
+    }
+    field += c; i++;
+  }
+  if (field !== '' || row.length > 0) { row.push(field); rows.push(row); }
+  if (rows.length === 0) return [];
+  const headers = rows[0];
+  return rows.slice(1).map((r) => Object.fromEntries(headers.map((h, idx) => [h, r[idx] ?? ''])));
+}
+
+function transformGoodreadsRow(r) {
+  const stripIsbn = (s) => (s || '').replace(/[="]/g, '').trim();
+  const isbn = stripIsbn(r['ISBN13']) || stripIsbn(r['ISBN']);
+  const flipName = (s) => {
+    if (!s) return s;
+    const m = s.match(/^([^,]+),\s*(.+)$/);
+    if (m && m[2].trim()) return `${m[2].trim()} ${m[1].trim()}`;
+    return s.replace(/,\s*$/, '').trim();
+  };
+  const mainAuthor = flipName(r['Author l-f'] || r['Author']);
+  const additional = (r['Additional Authors'] || '').split(',').map((s) => s.trim()).filter(Boolean);
+  const authors = [mainAuthor, ...additional].filter(Boolean);
+
+  const shelf = (r['Exclusive Shelf'] || '').trim();
+  const status = shelf === 'read' ? 'finished'
+               : shelf === 'currently-reading' ? 'reading'
+               : 'want_to_read';
+
+  const fmtDate = (d) => d ? d.replace(/\//g, '-') : null;
+  const year = parseInt(r['Original Publication Year'] || r['Year Published'] || '', 10);
+  const pages = parseInt(r['Number of Pages'] || '', 10);
+  const rating = parseInt(r['My Rating'] || '', 10);
+
+  const allShelves = (r['Bookshelves'] || '').split(',').map((s) => s.trim()).filter(Boolean);
+  const tags = allShelves.filter((s) => !['read', 'currently-reading', 'to-read', 'currently_reading', 'to_read'].includes(s));
+
+  const review = (r['My Review'] || '').trim();
+  const privateNotes = (r['Private Notes'] || '').trim();
+  const notes = [review, privateNotes].filter(Boolean).join('\n\n') || null;
+
+  return {
+    title: (r['Title'] || '').trim() || 'Untitled',
+    authors,
+    isbn: isbn || null,
+    publisher: r['Publisher']?.trim() || null,
+    year_published: Number.isFinite(year) ? year : null,
+    page_count: Number.isFinite(pages) && pages > 0 ? pages : null,
+    rating: rating > 0 && rating <= 5 ? rating : null,
+    status,
+    date_finished: status === 'finished' ? fmtDate(r['Date Read']) : null,
+    date_started: null,
+    notes,
+    genres: tags,
+    cover_url: isbn ? `https://covers.openlibrary.org/b/isbn/${isbn}-L.jpg?default=false` : null,
+    subjects: [],
+    current_page: status === 'finished' && Number.isFinite(pages) ? pages : 0,
+    is_fiction: null,
+  };
+}
+
+function showImportFlow() {
+  const panel = $('#add-modal .modal-panel');
+  panel.innerHTML = `<button class="modal-close" data-close aria-label="Close">×</button>
+    <h2>Import from Goodreads</h2>
+    <p class="modal-subtitle">
+      In Goodreads: <strong>Settings → Profile → Goodreads Library Export</strong> → click <em>Export Library</em>, wait a moment, then download the CSV. Drop it here.
+    </p>
+    <label style="display:block;border:2px dashed var(--rule-strong);border-radius:var(--radius);padding:24px;text-align:center;cursor:pointer;background:var(--bg-soft);">
+      <input type="file" id="goodreads-file" accept=".csv,text/csv" style="display:none;">
+      <span style="color:var(--ink-soft);font-family:var(--serif);font-style:italic;font-size:16px;">Click to choose your <code>goodreads_library_export.csv</code></span>
+    </label>
+    <div id="import-error" class="form-error" hidden></div>
+    <div id="import-summary" style="margin-top:16px;"></div>
+    <div style="display:flex;gap:8px;margin-top:16px;">
+      <button type="button" class="btn btn-ghost" id="import-back">← Back</button>
+    </div>`;
+  panel.querySelectorAll('[data-close]').forEach((el) => el.addEventListener('click', () => hideModal('#add-modal')));
+  $('#import-back').addEventListener('click', () => openAddModal());
+  $('#goodreads-file').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    await handleImportFile(file);
+  });
+}
+
+async function handleImportFile(file) {
+  const summaryEl = $('#import-summary');
+  const errEl = $('#import-error');
+  errEl.hidden = true;
+  summaryEl.innerHTML = '<div style="color:var(--ink-muted);font-style:italic;">Parsing…</div>';
+
+  let rows;
+  try {
+    const text = await file.text();
+    rows = parseCSV(text);
+  } catch (err) {
+    errEl.textContent = 'Could not read the file. Make sure it’s a CSV.';
+    errEl.hidden = false;
+    summaryEl.innerHTML = '';
+    return;
+  }
+
+  if (rows.length === 0 || !rows[0]['Title']) {
+    errEl.textContent = 'This doesn’t look like a Goodreads export. Expected a column called "Title".';
+    errEl.hidden = false;
+    summaryEl.innerHTML = '';
+    return;
+  }
+
+  const parsed = rows.map(transformGoodreadsRow).filter((b) => b.title);
+
+  // Dedup against existing library
+  const existingISBNs = new Set(state.books.filter((b) => b.isbn).map((b) => b.isbn));
+  const existingKeys = new Set(state.books.map((b) => `${(b.title || '').toLowerCase()}|${((b.authors || [])[0] || '').toLowerCase()}`));
+
+  const toImport = [];
+  let dupSkipped = 0;
+  for (const b of parsed) {
+    if (b.isbn && existingISBNs.has(b.isbn)) { dupSkipped++; continue; }
+    const key = `${b.title.toLowerCase()}|${((b.authors || [])[0] || '').toLowerCase()}`;
+    if (existingKeys.has(key)) { dupSkipped++; continue; }
+    toImport.push(b);
+    if (b.isbn) existingISBNs.add(b.isbn);
+    existingKeys.add(key);
+  }
+
+  const byStatus = { finished: 0, reading: 0, want_to_read: 0 };
+  for (const b of toImport) byStatus[b.status]++;
+
+  summaryEl.innerHTML = `
+    <div style="background:var(--bg-soft);border:1px solid var(--rule);border-radius:var(--radius);padding:16px;margin-bottom:12px;">
+      <div style="font-family:var(--serif);font-size:18px;margin-bottom:8px;">Found <strong>${parsed.length}</strong> books in your CSV.</div>
+      <ul style="margin:0;padding-left:18px;font-size:14px;color:var(--ink-soft);">
+        <li><strong>${toImport.length}</strong> new — will be added (${byStatus.finished} finished, ${byStatus.reading} reading, ${byStatus.want_to_read} future)</li>
+        <li><strong>${dupSkipped}</strong> already in your library — will be skipped</li>
+      </ul>
+    </div>
+    <button type="button" class="btn btn-primary" id="confirm-import" ${toImport.length === 0 ? 'disabled' : ''}>
+      ${toImport.length === 0 ? 'Nothing to import' : `Import ${toImport.length} books`}
+    </button>`;
+
+  if (toImport.length > 0) {
+    $('#confirm-import').addEventListener('click', () => runImport(toImport));
+  }
+}
+
+async function runImport(toImport) {
+  const summaryEl = $('#import-summary');
+  const total = toImport.length;
+  const CHUNK = 100;
+  let done = 0;
+  let failed = 0;
+  const inserted = [];
+
+  summaryEl.innerHTML = `
+    <div style="margin-bottom:12px;font-family:var(--serif);font-size:16px;">Importing… <span id="import-progress-text">0 / ${total}</span></div>
+    <div style="height:8px;background:var(--rule);border-radius:99px;overflow:hidden;">
+      <div id="import-progress-bar" style="width:0%;height:100%;background:var(--ink);transition:width 200ms ease;"></div>
+    </div>`;
+
+  for (let i = 0; i < total; i += CHUNK) {
+    const chunk = toImport.slice(i, i + CHUNK);
+    try {
+      const { data, error } = await sb.from('books').insert(chunk).select();
+      if (error) throw error;
+      if (data) inserted.push(...data);
+    } catch (err) {
+      failed += chunk.length;
+      console.error('Chunk failed:', err);
+    }
+    done += chunk.length;
+    $('#import-progress-text').textContent = `${Math.min(done, total)} / ${total}`;
+    $('#import-progress-bar').style.width = `${(done / total) * 100}%`;
+  }
+
+  // Add the inserted books to local state and re-render
+  state.books = [...inserted, ...state.books];
+  render();
+
+  summaryEl.innerHTML = `
+    <div style="background:var(--bg-soft);border:1px solid var(--rule);border-radius:var(--radius);padding:16px;">
+      <div style="font-family:var(--serif);font-size:20px;margin-bottom:6px;">Done.</div>
+      <div style="font-size:14px;color:var(--ink-soft);">
+        Imported <strong>${inserted.length}</strong> books.
+        ${failed > 0 ? `<br><span style="color:var(--accent);">${failed} failed — check the browser console.</span>` : ''}
+      </div>
+    </div>
+    <button type="button" class="btn btn-primary" id="import-done" style="margin-top:12px;">Done</button>`;
+  $('#import-done').addEventListener('click', () => hideModal('#add-modal'));
 }
 
 /* ===================== Auth ===================== */
