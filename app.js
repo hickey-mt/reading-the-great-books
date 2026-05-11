@@ -403,6 +403,9 @@ function editFormHtml(b) {
     <label>Genres (comma-separated)
       <input type="text" name="genres" value="${escape((b.genres || []).join(', '))}" placeholder="e.g. Fantasy, Memoir">
     </label>
+    <label>Cover image URL <span style="font-weight:400;color:var(--ink-muted);font-size:12px;">— right-click a cover anywhere (Amazon, Google Books, Goodreads), copy image address, paste here</span>
+      <input type="url" name="cover_url" value="${escape(b.cover_url || '')}" placeholder="https://...">
+    </label>
     <label>Notes
       <textarea name="notes" rows="5">${escape(b.notes || '')}</textarea>
     </label>
@@ -430,6 +433,7 @@ function wireEditForm(book) {
       date_finished: data.get('date_finished') || null,
       rating: data.get('rating') ? Number(data.get('rating')) : null,
       genres: (data.get('genres') || '').split(',').map((s) => s.trim()).filter(Boolean),
+      cover_url: data.get('cover_url') || null,
       notes: data.get('notes') || null,
     };
     try {
