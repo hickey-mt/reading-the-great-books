@@ -133,10 +133,14 @@ function visibleBooks() {
 
 function sortBooks(books) {
   if (state.tab !== 'full') {
-    // Cover-grid tabs: sort by date_finished desc for completed, by date_started desc for reading, by created_at desc for want
+    // Cover-grid tabs: primary sort by tab-specific date, fallback to created_at desc.
+    const primaryKey = state.tab === 'completed' ? 'date_finished'
+                     : state.tab === 'reading' ? 'date_started'
+                     : 'created_at';
     return [...books].sort((a, b) => {
-      if (state.tab === 'completed') return (b.date_finished || '').localeCompare(a.date_finished || '');
-      if (state.tab === 'reading') return (b.date_started || '').localeCompare(a.date_started || '');
+      const ap = a[primaryKey] || '';
+      const bp = b[primaryKey] || '';
+      if (ap !== bp) return bp.localeCompare(ap);
       return (b.created_at || '').localeCompare(a.created_at || '');
     });
   }
