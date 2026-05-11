@@ -132,7 +132,9 @@ a:hover { text-decoration: underline; }
   display: flex;
   gap: 4px;
   overflow-x: auto;
+  scrollbar-width: none;
 }
+.tabs-inner::-webkit-scrollbar { display: none; }
 .tab {
   background: transparent;
   border: none;
