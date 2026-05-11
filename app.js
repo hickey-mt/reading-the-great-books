@@ -756,10 +756,21 @@ function setupEvents() {
   }));
 }
 
+function setupIframeAutoResize() {
+  if (window.parent === window) return;
+  const post = () => {
+    const h = Math.ceil(document.documentElement.scrollHeight);
+    window.parent.postMessage({ type: 'book-tracker-height', height: h }, '*');
+  };
+  new ResizeObserver(post).observe(document.body);
+  window.addEventListener('load', post);
+}
+
 async function init() {
   setupHero();
   setupEvents();
   setupAuth();
+  setupIframeAutoResize();
   const { data: { session } } = await sb.auth.getSession();
   state.user = session?.user || null;
   updateAuthUI();
