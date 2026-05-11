@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>My Library</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="site-bar">
+    <div class="site-bar-inner">
+      <span class="site-bar-brand" id="site-bar-title">My Library</span>
+      <div class="site-bar-actions">
+        <button id="add-btn" class="btn btn-ghost-light" hidden>+ Add a book</button>
+        <button id="auth-btn" class="btn btn-ghost-light">Sign in</button>
+      </div>
+    </div>
+  </header>
+
+  <section class="hero" id="hero">
+    <div class="hero-overlay"></div>
+    <div class="hero-inner">
+      <p class="hero-kicker" id="hero-kicker">Reading Project</p>
+      <h1 class="hero-title" id="hero-title">My Library</h1>
+      <p class="hero-intro" id="hero-intro"></p>
+    </div>
+  </section>
+
+  <nav class="tabs" role="tablist" aria-label="Sections">
+    <div class="tabs-inner">
+      <button class="tab is-active" data-tab="full" role="tab" aria-selected="true">Full List</button>
+      <button class="tab" data-tab="reading" role="tab">Currently Reading</button>
+      <button class="tab" data-tab="completed" role="tab">Completed</button>
+      <button class="tab" data-tab="want" role="tab">Future Reading</button>
+    </div>
+  </nav>
+
+  <section class="toolbar" id="toolbar">
+    <div class="toolbar-inner">
+      <input id="search" type="search" placeholder="Search title, author, or notes…" autocomplete="off">
+      <select id="filter-author" aria-label="Filter by author"><option value="">All authors</option></select>
+      <select id="filter-year-read" aria-label="Filter by year read"><option value="">Any year read</option></select>
+      <select id="filter-year-published" aria-label="Filter by year published"><option value="">Any year published</option></select>
+      <select id="filter-fiction" aria-label="Filter by fiction or non-fiction">
+        <option value="">Fiction &amp; non-fiction</option>
+        <option value="true">Fiction</option>
+        <option value="false">Non-fiction</option>
+      </select>
+      <select id="filter-genre" aria-label="Filter by genre"><option value="">All genres</option></select>
+      <button id="clear-filters" class="btn btn-ghost btn-small" hidden>Clear</button>
+    </div>
+  </section>
+
+  <main id="content" class="content">
+    <div id="loading" class="state-message">Loading your library…</div>
+  </main>
+
+  <footer class="site-footer">
+    <span>Covers &amp; metadata by <a href="https://openlibrary.org" target="_blank" rel="noopener">Open Library</a></span>
+  </footer>
+
+  <!-- Auth modal -->
+  <div id="auth-modal" class="modal" hidden>
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-panel modal-panel-small" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+      <button class="modal-close" data-close aria-label="Close">×</button>
+      <h2 id="auth-title">Sign in</h2>
+      <p class="modal-subtitle">Only required if you want to add or edit books.</p>
+      <form id="auth-form">
+        <label>Email
+          <input type="email" id="auth-email" required autocomplete="email">
+        </label>
+        <label>Password
+          <input type="password" id="auth-password" required autocomplete="current-password">
+        </label>
+        <div id="auth-error" class="form-error" hidden></div>
+        <button type="submit" class="btn btn-primary btn-block">Sign in</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Add book modal -->
+  <div id="add-modal" class="modal" hidden>
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="add-title">
+      <button class="modal-close" data-close aria-label="Close">×</button>
+      <h2 id="add-title">Add a book</h2>
+      <p class="modal-subtitle">Search by title or author. Results come from Open Library.</p>
+      <div class="search-row">
+        <input type="search" id="ol-search" placeholder="e.g. Middlemarch George Eliot" autocomplete="off">
+        <button id="ol-search-btn" class="btn btn-primary">Search</button>
+      </div>
+      <div id="ol-results" class="ol-results"></div>
+    </div>
+  </div>
+
+  <!-- Book detail / edit modal -->
+  <div id="book-modal" class="modal" hidden>
+    <div class="modal-backdrop" data-close></div>
+    <div class="modal-panel modal-panel-wide" role="dialog" aria-modal="true">
+      <button class="modal-close" data-close aria-label="Close">×</button>
+      <div id="book-modal-content"></div>
+    </div>
+  </div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
