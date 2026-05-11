@@ -246,6 +246,88 @@ a:hover { text-decoration: underline; }
 }
 .btn-linklike:hover { color: var(--ink); }
 
+/* ---------- Selection bar ---------- */
+.selection-bar {
+  position: sticky;
+  top: 53px;
+  z-index: 9;
+  background: var(--ink);
+  color: #fff;
+  border-bottom: 1px solid #000;
+}
+.selection-bar-inner {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 12px 32px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+}
+.selection-bar-inner strong { font-weight: 600; }
+.selection-bar .btn-ghost {
+  color: rgba(255,255,255,0.85);
+  border-color: rgba(255,255,255,0.25);
+  background: transparent;
+}
+.selection-bar .btn-ghost:hover:not(:disabled) {
+  background: rgba(255,255,255,0.1);
+  color: #fff;
+}
+.selection-bar .btn-ghost:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.selection-bar .btn-danger {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+  margin-left: auto;
+}
+.selection-bar .btn-danger:hover:not(:disabled) { background: #9a2828; }
+.selection-bar .btn-danger:disabled {
+  background: rgba(255,255,255,0.15);
+  border-color: rgba(255,255,255,0.15);
+  color: rgba(255,255,255,0.5);
+  cursor: not-allowed;
+}
+
+/* Selected-state styling */
+.book-row.is-selected { background: var(--accent-soft); }
+.book-row.is-selected:hover { background: var(--accent-soft); }
+.book-row.is-selected .col-number {
+  color: var(--accent);
+  font-weight: 600;
+}
+.book-row.is-selected .col-number::before {
+  content: '✓ ';
+}
+.cover-tile.is-selected .cover-tile-img {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+.cover-tile.is-selected .cover-tile-img::after {
+  content: '✓';
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  z-index: 2;
+}
+
+@media (max-width: 640px) {
+  .selection-bar-inner { padding: 10px 20px; flex-wrap: wrap; }
+}
+
 /* ---------- Content ---------- */
 .content {
   max-width: var(--max-width);

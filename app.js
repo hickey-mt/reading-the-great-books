@@ -15,6 +15,8 @@ const state = {
   filters: { author: '', yearRead: '', yearPublished: '', fiction: '', genre: '' },
   sort: { column: 'authors', direction: 'asc' },
   user: null,
+  selectMode: false,
+  selected: new Set(),
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -192,7 +194,18 @@ function render() {
   }
 
   $$('.book-row, .cover-tile').forEach((el) => {
-    el.addEventListener('click', () => openBookDetail(el.dataset.id));
+    el.addEventListener('click', (e) => {
+      if (state.selectMode) {
+        e.preventDefault();
+        const id = el.dataset.id;
+        if (state.selected.has(id)) state.selected.delete(id);
+        else state.selected.add(id);
+        el.classList.toggle('is-selected');
+        updateSelectionBar();
+      } else {
+        openBookDetail(el.dataset.id);
+      }
+    });
   });
 }
 
@@ -206,7 +219,8 @@ function tableHtml(books) {
     const authors = (b.authors || []).join(', ') || '—';
     const rating = b.rating ? '★'.repeat(b.rating) : '';
     const tags = (b.genres || []).join(', ');
-    return `<tr class="book-row" data-id="${b.id}">
+    const selClass = state.selected.has(b.id) ? ' is-selected' : '';
+    return `<tr class="book-row${selClass}" data-id="${b.id}">
       <td class="col-number">${i + 1}</td>
       <td class="col-author">${escape(authors)}</td>
       <td class="col-title">${escape(b.title)}${b.subtitle ? `<span class="book-subtitle">${escape(b.subtitle)}</span>` : ''}</td>
@@ -268,7 +282,8 @@ function coverTileHtml(b) {
     ? `<img src="${escape(b.cover_url)}" alt="${escape(b.title)}" loading="lazy" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
        <div class="cover-tile-placeholder" style="display:none;">${escape(b.title)}</div>`
     : `<div class="cover-tile-placeholder">${escape(b.title)}</div>`;
-  return `<button class="cover-tile" data-id="${b.id}">
+  const selClass = state.selected.has(b.id) ? ' is-selected' : '';
+  return `<button class="cover-tile${selClass}" data-id="${b.id}">
     <div class="cover-tile-img">${cover}${progress}</div>
     <span class="cover-tile-title">${escape(b.title)}</span>
     ${authors ? `<span class="cover-tile-author">${escape(authors)}</span>` : ''}
@@ -881,15 +896,81 @@ async function runImport(toImport) {
   $('#import-done').addEventListener('click', () => hideModal('#add-modal'));
 }
 
+/* ===================== Bulk selection ===================== */
+
+function toggleSelectMode() {
+  state.selectMode = !state.selectMode;
+  if (!state.selectMode) state.selected.clear();
+  $('#select-btn').textContent = state.selectMode ? 'Cancel' : 'Select';
+  updateSelectionBar();
+  render();
+}
+
+function updateSelectionBar() {
+  let bar = $('#selection-bar');
+  if (!state.selectMode) {
+    if (bar) bar.remove();
+    return;
+  }
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'selection-bar';
+    bar.className = 'selection-bar';
+    const content = $('#content');
+    content.parentNode.insertBefore(bar, content);
+  }
+  const n = state.selected.size;
+  bar.innerHTML = `
+    <div class="selection-bar-inner">
+      <span><strong>${n}</strong> selected</span>
+      <button class="btn btn-ghost btn-small" id="sel-all">Select all visible</button>
+      <button class="btn btn-ghost btn-small" id="sel-clear" ${n === 0 ? 'disabled' : ''}>Clear</button>
+      <button class="btn btn-danger btn-small" id="sel-delete" ${n === 0 ? 'disabled' : ''}>Delete ${n || ''}</button>
+    </div>`;
+  $('#sel-all').addEventListener('click', () => {
+    for (const b of visibleBooks()) state.selected.add(b.id);
+    updateSelectionBar();
+    render();
+  });
+  $('#sel-clear').addEventListener('click', () => {
+    state.selected.clear();
+    updateSelectionBar();
+    render();
+  });
+  $('#sel-delete').addEventListener('click', bulkDelete);
+}
+
+async function bulkDelete() {
+  const ids = [...state.selected];
+  if (ids.length === 0) return;
+  if (!confirm(`Delete ${ids.length} book${ids.length === 1 ? '' : 's'}? This cannot be undone.`)) return;
+  const { error } = await sb.from('books').delete().in('id', ids);
+  if (error) { alert('Delete failed: ' + error.message); return; }
+  const idSet = new Set(ids);
+  state.books = state.books.filter((b) => !idSet.has(b.id));
+  state.selected.clear();
+  state.selectMode = false;
+  $('#select-btn').textContent = 'Select';
+  updateSelectionBar();
+  render();
+}
+
 /* ===================== Auth ===================== */
 
 function updateAuthUI() {
   if (state.user) {
     $('#auth-btn').textContent = 'Sign out';
     $('#add-btn').hidden = false;
+    $('#select-btn').hidden = false;
   } else {
     $('#auth-btn').textContent = 'Sign in';
     $('#add-btn').hidden = true;
+    $('#select-btn').hidden = true;
+    if (state.selectMode) {
+      state.selectMode = false;
+      state.selected.clear();
+      updateSelectionBar();
+    }
   }
 }
 
@@ -974,6 +1055,7 @@ function setupEvents() {
     render();
   });
   $('#add-btn').addEventListener('click', openAddModal);
+  $('#select-btn').addEventListener('click', toggleSelectMode);
   $$('[data-close]').forEach((el) => el.addEventListener('click', () => {
     const m = el.closest('.modal');
     if (m) hideModal('#' + m.id);
