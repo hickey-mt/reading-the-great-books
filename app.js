@@ -201,11 +201,13 @@ function tableHtml(books) {
   const rows = books.map((b, i) => {
     const authors = (b.authors || []).join(', ') || '—';
     const rating = b.rating ? '★'.repeat(b.rating) : '';
+    const tags = (b.genres || []).join(', ');
     return `<tr class="book-row" data-id="${b.id}">
       <td class="col-number">${i + 1}</td>
       <td class="col-author">${escape(authors)}</td>
       <td class="col-title">${escape(b.title)}${b.subtitle ? `<span class="book-subtitle">${escape(b.subtitle)}</span>` : ''}</td>
       <td class="col-year">${b.year_published ?? ''}</td>
+      <td class="col-tags">${escape(tags)}</td>
       <td class="col-status"><span class="status-pill status-${b.status}">${statusLabel(b.status)}</span></td>
       <td class="col-rating">${rating}</td>
     </tr>`;
@@ -217,6 +219,7 @@ function tableHtml(books) {
       <th data-sort="authors" class="${cls('authors')}">Author ${arrow('authors')}</th>
       <th data-sort="title" class="${cls('title')}">Title ${arrow('title')}</th>
       <th data-sort="year_published" class="${cls('year_published')}">Year ${arrow('year_published')}</th>
+      <th class="col-tags">Tags</th>
       <th data-sort="status" class="${cls('status')}">Status ${arrow('status')}</th>
       <th data-sort="rating" class="${cls('rating')}">Rating ${arrow('rating')}</th>
     </tr></thead>
@@ -282,7 +285,7 @@ function renderFilterOptions() {
   fillSelect('#filter-author', [...authors].sort(), state.filters.author, 'All authors');
   fillSelect('#filter-year-read', [...yearsRead].sort().reverse(), state.filters.yearRead, 'Any year read');
   fillSelect('#filter-year-published', [...yearsPub].sort().reverse(), state.filters.yearPublished, 'Any year published');
-  fillSelect('#filter-genre', [...genres].sort(), state.filters.genre, 'All genres');
+  fillSelect('#filter-genre', [...genres].sort(), state.filters.genre, 'All tags');
   const anyActive = Object.values(state.filters).some((v) => v) || state.search;
   $('#clear-filters').hidden = !anyActive;
 }
@@ -400,7 +403,7 @@ function editFormHtml(b) {
         ${[1,2,3,4,5].map(n => `<option value="${n}" ${b.rating === n ? 'selected' : ''}>${'★'.repeat(n)}</option>`).join('')}
       </select>
     </label>
-    <label>Genres (comma-separated)
+    <label>Tags (comma-separated)
       <input type="text" name="genres" value="${escape((b.genres || []).join(', '))}" placeholder="e.g. Fantasy, Memoir">
     </label>
     <label>Cover image URL <span style="font-weight:400;color:var(--ink-muted);font-size:12px;">— right-click a cover anywhere (Amazon, Google Books, Goodreads), copy image address, paste here</span>
@@ -463,10 +466,104 @@ function openAddModal() {
       <input type="search" id="ol-search" placeholder="e.g. Middlemarch George Eliot" autocomplete="off" autofocus>
       <button id="ol-search-btn" class="btn btn-primary">Search</button>
     </div>
-    <div id="ol-results" class="ol-results"></div>`;
+    <div id="ol-results" class="ol-results"></div>
+    <p style="margin-top:20px;padding-top:16px;border-top:1px solid var(--rule);text-align:center;font-size:13px;color:var(--ink-muted);">
+      Can’t find it? <button type="button" id="go-manual" class="btn-linklike">Enter it manually →</button>
+    </p>`;
   panel.querySelectorAll('[data-close]').forEach((el) => el.addEventListener('click', () => hideModal('#add-modal')));
+  $('#go-manual').addEventListener('click', showManualForm);
   setupAddFlow();
   showModal('#add-modal');
+}
+
+function showManualForm() {
+  const panel = $('#add-modal .modal-panel');
+  panel.innerHTML = `<button class="modal-close" data-close aria-label="Close">×</button>
+    <h2>Add manually</h2>
+    <p class="modal-subtitle">Fill in whatever you know. Only the title is required.</p>
+    <form id="manual-book-form">
+      <label>Title *
+        <input type="text" name="title" required autofocus>
+      </label>
+      <label>Subtitle
+        <input type="text" name="subtitle">
+      </label>
+      <label>Author(s) <span style="font-weight:400;color:var(--ink-muted);font-size:12px;">— comma-separated for multiple</span>
+        <input type="text" name="authors" placeholder="e.g. George Eliot">
+      </label>
+      <div class="form-row">
+        <label>Year published
+          <input type="number" name="year_published" placeholder="e.g. 1872">
+        </label>
+        <label>Page count
+          <input type="number" name="page_count" min="0">
+        </label>
+      </div>
+      <label>Publisher
+        <input type="text" name="publisher">
+      </label>
+      <label>ISBN
+        <input type="text" name="isbn">
+      </label>
+      <label>Cover image URL <span style="font-weight:400;color:var(--ink-muted);font-size:12px;">— right-click a cover anywhere, copy image address, paste here</span>
+        <input type="url" name="cover_url" placeholder="https://...">
+      </label>
+      <div class="form-row">
+        <label>Status
+          <select name="status">
+            <option value="want_to_read" selected>Want to read</option>
+            <option value="reading">Reading</option>
+            <option value="finished">Finished</option>
+          </select>
+        </label>
+        <label>Fiction / non-fiction
+          <select name="is_fiction">
+            <option value="" selected>—</option>
+            <option value="true">Fiction</option>
+            <option value="false">Non-fiction</option>
+          </select>
+        </label>
+      </div>
+      <label>Tags (comma-separated)
+        <input type="text" name="genres" placeholder="e.g. Fantasy, Memoir">
+      </label>
+      <div id="manual-error" class="form-error" hidden></div>
+      <div style="display:flex; gap:8px; margin-top:16px;">
+        <button type="submit" class="btn btn-primary">Add to library</button>
+        <button type="button" class="btn btn-ghost" id="back-to-search-2">← Back to search</button>
+      </div>
+    </form>`;
+  panel.querySelectorAll('[data-close]').forEach((el) => el.addEventListener('click', () => hideModal('#add-modal')));
+  $('#back-to-search-2').addEventListener('click', () => openAddModal());
+  $('#manual-book-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const data = new FormData(e.target);
+    const newBook = {
+      title: (data.get('title') || '').trim() || 'Untitled',
+      subtitle: data.get('subtitle') || null,
+      authors: (data.get('authors') || '').split(',').map((s) => s.trim()).filter(Boolean),
+      publisher: data.get('publisher') || null,
+      year_published: data.get('year_published') ? Number(data.get('year_published')) : null,
+      page_count: data.get('page_count') ? Number(data.get('page_count')) : null,
+      isbn: data.get('isbn') || null,
+      cover_url: data.get('cover_url') || null,
+      status: data.get('status'),
+      is_fiction: data.get('is_fiction') === '' ? null : data.get('is_fiction') === 'true',
+      genres: (data.get('genres') || '').split(',').map((s) => s.trim()).filter(Boolean),
+      subjects: [],
+      current_page: 0,
+    };
+    try {
+      const saved = await upsertBook(newBook);
+      state.books.unshift(saved);
+      hideModal('#add-modal');
+      render();
+    } catch (err) {
+      const e = $('#manual-error');
+      e.textContent = err.message;
+      e.hidden = false;
+    }
+  });
 }
 
 function setupAddFlow() {
@@ -532,7 +629,7 @@ function showNewBookForm(prefilled) {
           </select>
         </label>
       </div>
-      <label>Genres (comma-separated, edit as you like)
+      <label>Tags (comma-separated, edit as you like)
         <input type="text" name="genres" value="${escape((prefilled.genres || []).join(', '))}">
       </label>
       <div id="new-error" class="form-error" hidden></div>
