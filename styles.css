@@ -235,6 +235,16 @@ a:hover { text-decoration: underline; }
   border-color: var(--accent-soft);
 }
 .btn-danger:hover { background: var(--accent-soft); }
+.btn-linklike {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+}
+.btn-linklike:hover { color: var(--ink); }
 
 /* ---------- Content ---------- */
 .content {
@@ -318,6 +328,11 @@ a:hover { text-decoration: underline; }
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+.book-table .col-tags {
+  color: var(--ink-muted);
+  font-size: 13px;
+  max-width: 220px;
+}
 .book-table .col-status { width: 140px; }
 .book-table .col-rating {
   width: 100px;
@@ -340,6 +355,9 @@ a:hover { text-decoration: underline; }
 .status-pill.status-finished { background: rgba(20, 17, 14, 0.85); color: #fff; }
 .status-pill.status-want_to_read { background: rgba(122, 31, 31, 0.10); color: var(--accent); }
 
+@media (max-width: 900px) {
+  .book-table .col-tags { display: none; }
+}
 @media (max-width: 720px) {
   .book-table .col-author { font-size: 13px; }
   .book-table .col-title { font-size: 16px; }
@@ -456,6 +474,18 @@ a:hover { text-decoration: underline; }
   padding: 24px;
 }
 .modal[hidden] { display: none; }
+.modal.modal-anchored {
+  position: absolute;
+  inset: auto;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: auto;
+  align-items: flex-start;
+  padding-top: 32px;
+  padding-bottom: 32px;
+}
+.modal.modal-anchored .modal-panel { max-height: 700px; }
 .modal-backdrop {
   position: absolute;
   inset: 0;
@@ -523,6 +553,7 @@ form input[type="password"],
 form input[type="number"],
 form input[type="date"],
 form input[type="search"],
+form input[type="url"],
 form select,
 form textarea {
   width: 100%;

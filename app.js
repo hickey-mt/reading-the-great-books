@@ -927,12 +927,17 @@ function setupAuth() {
 function showModal(sel) {
   const el = $(sel);
   el.hidden = false;
+  if (window.parent !== window) {
+    el.classList.add('modal-anchored');
+    window.parent.postMessage({ type: 'book-tracker-focus' }, '*');
+  }
   document.body.style.overflow = 'hidden';
   document.addEventListener('keydown', escClose);
 }
 function hideModal(sel) {
   const el = $(sel);
   el.hidden = true;
+  el.classList.remove('modal-anchored');
   document.body.style.overflow = '';
   document.removeEventListener('keydown', escClose);
 }
