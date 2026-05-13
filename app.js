@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
   SUPABASE_URL, SUPABASE_ANON_KEY,
   SITE_TITLE, SITE_KICKER, SITE_INTRO, HERO_IMAGE,
+  GOOGLE_BOOKS_API_KEY,
 } from './config.js';
 
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -490,10 +491,13 @@ function openAddModal() {
       Can’t find it? <button type="button" id="go-manual" class="btn-linklike">Enter it manually →</button>
       &nbsp;·&nbsp;
       <button type="button" id="go-import" class="btn-linklike">Import from Goodreads →</button>
+      &nbsp;·&nbsp;
+      <button type="button" id="go-refresh" class="btn-linklike">Refresh all covers →</button>
     </p>`;
   panel.querySelectorAll('[data-close]').forEach((el) => el.addEventListener('click', () => hideModal('#add-modal')));
   $('#go-manual').addEventListener('click', showManualForm);
   $('#go-import').addEventListener('click', showImportFlow);
+  $('#go-refresh').addEventListener('click', showRefreshCoversFlow);
   setupAddFlow();
   showModal('#add-modal');
 }
@@ -894,6 +898,157 @@ async function runImport(toImport) {
     </div>
     <button type="button" class="btn btn-primary" id="import-done" style="margin-top:12px;">Done</button>`;
   $('#import-done').addEventListener('click', () => hideModal('#add-modal'));
+}
+
+/* ===================== Cover refresh ===================== */
+
+function cleanIsbn(s) { return (s || '').replace(/[^0-9X]/gi, ''); }
+
+function isbn13to10(isbn13) {
+  if (!isbn13 || isbn13.length !== 13 || !isbn13.startsWith('978')) return null;
+  const digits9 = isbn13.slice(3, 12);
+  let sum = 0;
+  for (let i = 0; i < 9; i++) sum += parseInt(digits9[i], 10) * (10 - i);
+  const check = (11 - (sum % 11)) % 11;
+  return digits9 + (check === 10 ? 'X' : String(check));
+}
+
+async function fetchGoogleBooksCover(isbn) {
+  if (!GOOGLE_BOOKS_API_KEY) return null;
+  try {
+    const url = `https://www.googleapis.com/books/v1/volumes?q=isbn:${encodeURIComponent(isbn)}&key=${encodeURIComponent(GOOGLE_BOOKS_API_KEY)}&fields=items(volumeInfo/imageLinks)`;
+    const r = await fetch(url);
+    if (!r.ok) return null;
+    const j = await r.json();
+    const links = j.items?.[0]?.volumeInfo?.imageLinks;
+    if (!links) return null;
+    let cover = links.thumbnail || links.smallThumbnail;
+    if (!cover) return null;
+    return cover.replace(/^http:/, 'https:').replace(/&edge=curl/, '').replace(/zoom=\d/, 'zoom=2');
+  } catch {
+    return null;
+  }
+}
+
+function checkAmazonCover(isbn10) {
+  return new Promise((resolve) => {
+    const url = `https://m.media-amazon.com/images/P/${isbn10}.01.LZZZZZZZ.jpg`;
+    const img = new Image();
+    let settled = false;
+    const done = (v) => { if (!settled) { settled = true; resolve(v); } };
+    img.onload = () => done(img.naturalWidth > 50 ? url : null);
+    img.onerror = () => done(null);
+    setTimeout(() => done(null), 6000);
+    img.src = url;
+  });
+}
+
+async function fetchAmazonCover(isbn) {
+  let isbn10 = isbn.length === 10 ? isbn : isbn13to10(isbn);
+  if (!isbn10 || isbn10.length !== 10) return null;
+  return checkAmazonCover(isbn10);
+}
+
+function isOLCoverOrEmpty(url) {
+  if (!url) return true;
+  return /covers\.openlibrary\.org/.test(url);
+}
+
+function showRefreshCoversFlow() {
+  const panel = $('#add-modal .modal-panel');
+  const candidates = state.books.filter((b) => cleanIsbn(b.isbn) && isOLCoverOrEmpty(b.cover_url));
+  const noIsbn = state.books.filter((b) => !cleanIsbn(b.isbn)).length;
+  const manuallySet = state.books.filter((b) => b.cover_url && !isOLCoverOrEmpty(b.cover_url)).length;
+
+  panel.innerHTML = `<button class="modal-close" data-close aria-label="Close">×</button>
+    <h2>Refresh covers</h2>
+    <p class="modal-subtitle">
+      ${GOOGLE_BOOKS_API_KEY
+        ? 'Try Google Books first, then Amazon as a fallback, for every book whose cover is missing or still pointing at Open Library.'
+        : 'Try Amazon for every book whose cover is missing or still pointing at Open Library. (To also use Google Books, paste a free API key into <code>config.js</code>.)'}
+      Hand-picked cover URLs you’ve set yourself won’t be touched.
+    </p>
+    <div style="background:var(--bg-soft);border:1px solid var(--rule);border-radius:var(--radius);padding:16px;margin-bottom:16px;">
+      <ul style="margin:0;padding-left:18px;font-size:14px;color:var(--ink-soft);line-height:1.8;">
+        <li><strong>${candidates.length}</strong> books will be looked up</li>
+        <li><strong>${manuallySet}</strong> books have hand-set covers — will be left alone</li>
+        <li><strong>${noIsbn}</strong> books have no ISBN — will be skipped</li>
+      </ul>
+    </div>
+    <div id="refresh-progress"></div>
+    <div style="display:flex;gap:8px;margin-top:16px;">
+      <button type="button" class="btn btn-primary" id="confirm-refresh" ${candidates.length === 0 ? 'disabled' : ''}>
+        ${candidates.length === 0 ? 'Nothing to refresh' : `Refresh ${candidates.length} covers`}
+      </button>
+      <button type="button" class="btn btn-ghost" id="refresh-back">← Back</button>
+    </div>`;
+  panel.querySelectorAll('[data-close]').forEach((el) => el.addEventListener('click', () => hideModal('#add-modal')));
+  $('#refresh-back').addEventListener('click', () => openAddModal());
+  if (candidates.length > 0) {
+    $('#confirm-refresh').addEventListener('click', () => runCoverRefresh(candidates));
+  }
+}
+
+async function runCoverRefresh(candidates) {
+  const progressEl = $('#refresh-progress');
+  $('#confirm-refresh').disabled = true;
+  const total = candidates.length;
+  let done = 0, fromGoogle = 0, fromAmazon = 0, missed = 0;
+
+  progressEl.innerHTML = `
+    <div style="margin:12px 0 8px;font-family:var(--serif);font-size:16px;">
+      Refreshing… <span id="refresh-progress-text">0 / ${total}</span>
+    </div>
+    <div style="height:8px;background:var(--rule);border-radius:99px;overflow:hidden;">
+      <div id="refresh-progress-bar" style="width:0%;height:100%;background:var(--ink);transition:width 200ms ease;"></div>
+    </div>
+    <div id="refresh-stats" style="font-size:13px;color:var(--ink-muted);margin-top:8px;"></div>`;
+
+  const PARALLEL = 4;
+  for (let i = 0; i < candidates.length; i += PARALLEL) {
+    const slice = candidates.slice(i, i + PARALLEL);
+    await Promise.all(slice.map(async (book) => {
+      const isbn = cleanIsbn(book.isbn);
+      let url = null, source = null;
+      url = await fetchGoogleBooksCover(isbn);
+      if (url) source = 'google';
+      if (!url) {
+        url = await fetchAmazonCover(isbn);
+        if (url) source = 'amazon';
+      }
+      if (url) {
+        const { error } = await sb.from('books').update({ cover_url: url }).eq('id', book.id);
+        if (!error) {
+          book.cover_url = url;
+          if (source === 'google') fromGoogle++;
+          else fromAmazon++;
+        } else {
+          missed++;
+        }
+      } else {
+        missed++;
+      }
+      done++;
+      $('#refresh-progress-text').textContent = `${done} / ${total}`;
+      $('#refresh-progress-bar').style.width = `${(done / total) * 100}%`;
+      $('#refresh-stats').textContent = GOOGLE_BOOKS_API_KEY
+        ? `Google Books: ${fromGoogle} · Amazon: ${fromAmazon} · No cover: ${missed}`
+        : `Amazon: ${fromAmazon} · No cover: ${missed}`;
+    }));
+  }
+
+  progressEl.innerHTML = `
+    <div style="background:var(--bg-soft);border:1px solid var(--rule);border-radius:var(--radius);padding:16px;margin-top:12px;">
+      <div style="font-family:var(--serif);font-size:20px;margin-bottom:6px;">Done.</div>
+      <div style="font-size:14px;color:var(--ink-soft);line-height:1.7;">
+        Updated <strong>${fromGoogle + fromAmazon}</strong> covers
+        ${GOOGLE_BOOKS_API_KEY ? `(Google Books: ${fromGoogle}, Amazon: ${fromAmazon}).` : `(from Amazon).`}<br>
+        <strong>${missed}</strong> books still have no cover after lookup.
+      </div>
+    </div>
+    <button type="button" class="btn btn-primary" id="refresh-done" style="margin-top:12px;">Done</button>`;
+  $('#refresh-done').addEventListener('click', () => { hideModal('#add-modal'); render(); });
+  render();
 }
 
 /* ===================== Bulk selection ===================== */
